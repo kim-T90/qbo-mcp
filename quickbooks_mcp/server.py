@@ -65,7 +65,7 @@ mcp = FastMCP(
         "qbo_journal_entry for journal entries, qbo_purchase for purchases, "
         "qbo_item for products/services, "
         "qbo_report for financial reports, qbo_attachment for file attachments, "
-        "qbo_sync for bulk/CDC operations. "
+        "qbo_bulk for bulk/CDC operations. "
         "If authentication fails (401/403), use "
         "qbo_help(topic='error_codes') for recovery steps."
     ),

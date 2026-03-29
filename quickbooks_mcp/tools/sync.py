@@ -1,4 +1,4 @@
-"""qbo_sync tool — bulk/sync operations: CDC, batch, count."""
+"""qbo_bulk tool — bulk operations: CDC, batch, count."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 _TOOL_DESCRIPTION = (
     f"{PREVIEW_HINT} "
-    "Bulk and sync operations for QuickBooks Online. "
+    "Bulk operations for QuickBooks Online. "
     "Operations: cdc (Change Data Capture — fetch entities modified since a datetime), "
     "batch (execute up to 30 create/update/delete operations in sequence), "
     "count (count entities matching an optional WHERE clause). "
@@ -328,10 +328,10 @@ async def _count(
 
 
 def register(mcp: FastMCP) -> None:
-    """Register the qbo_sync tool on *mcp*."""
+    """Register the qbo_bulk tool on *mcp*."""
 
     @mcp.tool(
-        name="qbo_sync",
+        name="qbo_bulk",
         description=_TOOL_DESCRIPTION,
         annotations={
             "readOnlyHint": False,
@@ -340,7 +340,7 @@ def register(mcp: FastMCP) -> None:
             "openWorldHint": True,
         },
     )
-    async def qbo_sync(
+    async def qbo_bulk(
         ctx: Context,
         operation: Literal["cdc", "batch", "count"],
         entities: list[str] | None = None,
@@ -351,7 +351,7 @@ def register(mcp: FastMCP) -> None:
         preview: bool = True,
         response_format: Literal["json", "markdown"] = "json",
     ) -> dict | str:
-        """Bulk and sync operations for QuickBooks Online.
+        """Bulk operations for QuickBooks Online.
 
         Operations:
         - cdc: Change Data Capture — fetch all entities modified since a given

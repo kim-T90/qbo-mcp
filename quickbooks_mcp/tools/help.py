@@ -295,7 +295,7 @@ _ERROR_CODES: dict[int, dict] = {
     429: {
         "meaning": "Rate limited",
         "common_causes": ["Too many requests"],
-        "recovery": ("Wait 60 seconds. Use qbo_sync(operation='batch') to combine ops."),
+        "recovery": ("Wait 60 seconds. Use qbo_bulk(operation='batch') to combine ops."),
     },
     500: {
         "meaning": "QBO internal error",
@@ -530,7 +530,8 @@ def register(mcp: FastMCP) -> None:
             "line_items",
             "required_params",
             "error_codes",
-        ],
+        ]
+        | None = None,
         entity: str | None = None,
     ) -> dict | str:
         """Offline reference for QuickBooks field names, operation matrices, and IDS query syntax.
@@ -538,8 +539,10 @@ def register(mcp: FastMCP) -> None:
         No API calls are made. Use this before constructing search queries or
         creating transactions to discover the correct field names and available operations.
 
+        Call with no arguments to see available topics and a quick-start guide.
+
         Args:
-            topic: What to look up:
+            topic: What to look up (omit to see all topics):
                 - fields: List queryable field names for an entity.
                   Provide entity (e.g. 'Customer', 'Invoice', 'Account').
                   Omit entity to see all available entities.
@@ -558,6 +561,38 @@ def register(mcp: FastMCP) -> None:
             entity: Entity name for field lookup (e.g. 'Customer', 'Invoice').
                 PascalCase or lowercase both work.
         """
+        if topic is None:
+            return {
+                "topics": [
+                    "fields",
+                    "operations",
+                    "query_syntax",
+                    "line_items",
+                    "required_params",
+                    "error_codes",
+                ],
+                "quick_start": {
+                    "search": (
+                        "Use qbo_{entity}(operation='search', "
+                        "query=\"Balance > '0'\"). "
+                        "Example: qbo_invoice(operation='search', "
+                        "query=\"Balance > '0'\") finds unpaid invoices."
+                    ),
+                    "create": (
+                        "Use qbo_{entity}(operation='create', ..., "
+                        "preview=False). preview defaults to True "
+                        "(dry-run) — set False to execute."
+                    ),
+                    "reference": (
+                        "qbo_reference(operation='get_company_info') "
+                        "for company details, 'list_terms' for "
+                        "payment terms, 'list_payment_methods' for "
+                        "payment methods."
+                    ),
+                },
+                "note": ("Call qbo_help(topic='...') for detailed reference on any topic above."),
+            }
+
         if topic == "fields":
             if entity:
                 # Normalize: try PascalCase first, then title-case the input

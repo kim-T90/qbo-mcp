@@ -217,8 +217,8 @@ async def validate_report(client) -> None:
 
 
 async def validate_sync(client) -> None:
-    """qbo_sync — entity count + CDC."""
-    print("\n--- qbo_sync ---")
+    """qbo_bulk — entity count + CDC."""
+    print("\n--- qbo_bulk ---")
 
     # Entity count
     try:
@@ -226,9 +226,9 @@ async def validate_sync(client) -> None:
             client.qb_client.query,
             "SELECT COUNT(*) FROM Invoice",
         )
-        record("qbo_sync", "count_invoices", "pass", f"Result: {count_result}")
+        record("qbo_bulk", "count_invoices", "pass", f"Result: {count_result}")
     except Exception as e:
-        record("qbo_sync", "count_invoices", "fail", str(e))
+        record("qbo_bulk", "count_invoices", "fail", str(e))
 
     # CDC — changes in last 7 days
     try:
@@ -239,9 +239,9 @@ async def validate_sync(client) -> None:
             since,
         )
         entities_found = list(cdc.keys()) if isinstance(cdc, dict) else "response received"
-        record("qbo_sync", "cdc", "pass", f"Entities: {entities_found}")
+        record("qbo_bulk", "cdc", "pass", f"Entities: {entities_found}")
     except Exception as e:
-        record("qbo_sync", "cdc", "fail", str(e))
+        record("qbo_bulk", "cdc", "fail", str(e))
 
 
 async def validate_attachment(client) -> None:

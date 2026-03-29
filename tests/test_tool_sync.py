@@ -1,4 +1,4 @@
-"""Tests for the qbo_sync tool."""
+"""Tests for the qbo_bulk tool."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def _make_ctx(client: MagicMock) -> MagicMock:
 
 @pytest.fixture
 def tool_fn():
-    """Return the raw qbo_sync coroutine extracted from a one-shot FastMCP."""
+    """Return the raw qbo_bulk coroutine extracted from a one-shot FastMCP."""
     mcp = MagicMock()
     captured = {}
 
