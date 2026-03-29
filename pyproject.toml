@@ -1,0 +1,38 @@
+[project]
+name = "quickbooks-mcp"
+version = "0.1.0"
+requires-python = ">=3.13"
+description = "QuickBooks Online MCP server for Claude Code and Claude Desktop"
+
+dependencies = [
+    "fastmcp>=3.0",
+    "python-quickbooks>=0.9.12",
+    "intuit-oauth==1.2.6",
+    "python-dotenv>=1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+    "pytest-asyncio>=0.25",
+    "responses>=0.25",
+    "ruff>=0.8",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests requiring live sandbox (deselect with '-m not integration')",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
