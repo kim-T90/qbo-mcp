@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -44,6 +45,43 @@ class TestFromConfig:
         assert isinstance(client, QBOClient)
         assert client.realm_id == env_vars["QBO_REALM_ID"]
         assert client.environment == env_vars["QBO_ENVIRONMENT"]
+
+
+# ---------------------------------------------------------------------------
+# connect
+# ---------------------------------------------------------------------------
+
+
+class TestConnect:
+    @pytest.mark.asyncio
+    async def test_builds_auth_client_with_configured_redirect_uri(
+        self, qbo_config: QBOConfig, mock_company_info: MagicMock
+    ) -> None:
+        config = dataclasses.replace(
+            qbo_config,
+            redirect_uri="https://example.com/integrations/quickbooks/callback",
+        )
+        client = _make_client(config)
+
+        mock_auth_instance = MagicMock()
+        mock_auth_instance.refresh_token = "refreshed_token"
+        mock_qb_instance = MagicMock()
+
+        with (
+            patch("quickbooks_mcp.client.AuthClient", return_value=mock_auth_instance) as mock_auth,
+            patch("quickbooks_mcp.client.QuickBooks", return_value=mock_qb_instance),
+            patch("quickbooks_mcp.client.CompanyInfo.get", return_value=mock_company_info),
+        ):
+            await client.connect()
+
+        mock_auth.assert_called_once_with(
+            client_id=config.client_id,
+            client_secret=config.client_secret,
+            redirect_uri=config.redirect_uri,
+            environment=config.environment,
+            refresh_token=config.refresh_token,
+        )
+        mock_auth_instance.refresh.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------

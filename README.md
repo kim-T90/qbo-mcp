@@ -9,41 +9,83 @@ A Python MCP server exposing QuickBooks Online accounting operations through 8 p
 ### 1. Install dependencies
 
 ```bash
-cd src/quickbooks
 uv sync
 ```
 
-### 2. Set up OAuth credentials
+### 2. Choose your setup track
 
-Create an app at [developer.intuit.com](https://developer.intuit.com):
+This repo supports two OAuth setup paths:
 
-1. Sign in and go to **Dashboard**
-2. Click **Create an app** (or open an existing one)
-3. Under **Development Settings > Keys & credentials**, note your **Client ID** and **Client Secret**
-4. Ensure scope includes `com.intuit.quickbooks.accounting`
+- **Sandbox quickstart**: use development keys and a sandbox company. If `QBO_REDIRECT_URI` is unset, the auth CLI falls back to the Intuit OAuth Playground for a fast local setup.
+- **Production / private internal setup**: use production keys and your live QuickBooks Online company. You must register your own HTTPS redirect URI in Intuit Developer and set `QBO_REDIRECT_URI` locally.
 
-### 3. Configure `.env`
+### 3A. Sandbox quickstart
+
+Create or open an app at [developer.intuit.com](https://developer.intuit.com), then copy the app's **development** Client ID and Client Secret.
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and fill in **only these two fields** (the rest come from the auth flow):
+Edit `.env` and set:
 
-```
-QBO_CLIENT_ID=your_client_id_from_step_2
-QBO_CLIENT_SECRET=your_client_secret_from_step_2
+```dotenv
+QBO_CLIENT_ID=your_development_client_id
+QBO_CLIENT_SECRET=your_development_client_secret
+QBO_ENVIRONMENT=sandbox
+QBO_REDIRECT_URI=
 ```
 
-### 4. Run the auth flow
+Leave `QBO_REFRESH_TOKEN` and `QBO_REALM_ID` blank. Then run:
 
 ```bash
 uv run python -m quickbooks_mcp.auth
 ```
 
-This opens Intuit's OAuth Playground in your browser. Log in, authorize access, then copy the **full redirect URL** from your browser's address bar and paste it back into the terminal. The script saves `QBO_REFRESH_TOKEN` and `QBO_REALM_ID` to your `.env` automatically.
+The CLI opens the authorization URL, then asks you to paste the full callback URL from your browser. In sandbox mode, leaving `QBO_REDIRECT_URI` blank uses the Intuit OAuth Playground redirect automatically.
 
-### 5. Verify the connection
+### 3B. Production / private internal setup
+
+Production access to live QuickBooks data still requires a real Intuit app, even for internal use.
+
+In Intuit Developer:
+
+1. Create or open the app you will dedicate to this MCP.
+2. Complete the production metadata and compliance flow.
+3. Register your production redirect URI, for example:
+   `https://your-org.example.com/integrations/quickbooks/callback`
+4. Wait for production keys to become available, then copy the **production** Client ID and Client Secret.
+
+Your public pages can stay minimal. Most teams add:
+
+- `https://your-org.example.com/integrations/quickbooks/privacy`
+- `https://your-org.example.com/integrations/quickbooks/terms`
+- `https://your-org.example.com/integrations/quickbooks/launch`
+- `https://your-org.example.com/integrations/quickbooks/disconnect`
+- `https://your-org.example.com/integrations/quickbooks/callback`
+
+The callback page can be a static page that shows `window.location.href` and offers a copy button so you can paste the full callback URL back into the terminal. A starter bundle for all required pages lives at `examples/quickbooks_pages/`.
+
+Set `.env` like this:
+
+```dotenv
+QBO_CLIENT_ID=your_production_client_id
+QBO_CLIENT_SECRET=your_production_client_secret
+QBO_ENVIRONMENT=production
+QBO_REDIRECT_URI=https://your-org.example.com/integrations/quickbooks/callback
+QBO_REFRESH_TOKEN=
+QBO_REALM_ID=
+```
+
+Then run:
+
+```bash
+uv run python -m quickbooks_mcp.auth
+```
+
+After you approve the app in QuickBooks, land on your hosted callback page, copy the full callback URL, and paste it back into the terminal. The script saves `QBO_REFRESH_TOKEN` and `QBO_REALM_ID` to `.env`.
+
+### 4. Verify the connection
 
 ```bash
 uv run python -c "
@@ -58,9 +100,9 @@ asyncio.run(check())
 "
 ```
 
-If this prints your realm ID, you're good. If it fails, check your `.env` values and re-run step 4.
+If this prints your realm ID, you're good. If it fails, check your `.env` values and re-run the auth flow.
 
-### 6. Register in Claude Code
+### 5. Register in Claude Code
 
 First, find your quickbooks directory path:
 
@@ -80,13 +122,14 @@ claude mcp add quickbooks \
   -e QBO_REFRESH_TOKEN=YOUR_REFRESH_TOKEN \
   -e QBO_REALM_ID=YOUR_REALM_ID \
   -e QBO_ENVIRONMENT=production \
+  -e QBO_REDIRECT_URI=YOUR_REDIRECT_URI \
   -e QBO_MINOR_VERSION=75 \
   -- uv run --directory "YOUR_PATH_FROM_PWD" python -m quickbooks_mcp
 ```
 
 **Verify:** Start a new Claude Code session and ask it to call `qbo_reference(operation="get_company_info")`. It should return your company name.
 
-### 7. Register in Claude Desktop
+### 6. Register in Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (merge into existing `mcpServers` if the file already has entries):
 
@@ -109,6 +152,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (merge 
         "QBO_REFRESH_TOKEN": "YOUR_REFRESH_TOKEN",
         "QBO_REALM_ID": "YOUR_REALM_ID",
         "QBO_ENVIRONMENT": "production",
+        "QBO_REDIRECT_URI": "YOUR_REDIRECT_URI",
         "QBO_MINOR_VERSION": "75"
       }
     }
@@ -124,15 +168,16 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (merge 
 
 Copy `.env.example` to `.env` and fill in your values. See `.env.example` for descriptions of each variable.
 
-| Variable            | Required | Default   | Description                        |
-| ------------------- | -------- | --------- | ---------------------------------- |
-| `QBO_CLIENT_ID`     | Yes      | --        | OAuth app Client ID                |
-| `QBO_CLIENT_SECRET` | Yes      | --        | OAuth app Client Secret            |
-| `QBO_REFRESH_TOKEN` | Yes      | --        | OAuth refresh token (auto-rotated) |
-| `QBO_REALM_ID`      | Yes      | --        | QBO Company ID                     |
-| `QBO_ENVIRONMENT`   | No       | `sandbox` | `sandbox` or `production`          |
-| `QBO_MINOR_VERSION` | No       | `75`      | QBO API minor version              |
-| `DEBUG_QBO`         | No       | `false`   | Log raw API payloads to stderr     |
+| Variable            | Required | Default                                                   | Description                                                   |
+| ------------------- | -------- | --------------------------------------------------------- | ------------------------------------------------------------- |
+| `QBO_CLIENT_ID`     | Yes      | --                                                        | OAuth app Client ID                                           |
+| `QBO_CLIENT_SECRET` | Yes      | --                                                        | OAuth app Client Secret                                       |
+| `QBO_REFRESH_TOKEN` | Yes      | --                                                        | OAuth refresh token (auto-rotated)                            |
+| `QBO_REALM_ID`      | Yes      | --                                                        | QBO Company ID                                                |
+| `QBO_ENVIRONMENT`   | No       | `sandbox`                                                 | `sandbox` or `production`                                     |
+| `QBO_REDIRECT_URI`  | Prod yes | `https://developer.intuit.com/v2/OAuth2Playground/RedirectUrl` in sandbox | Registered redirect URI. Required in production.              |
+| `QBO_MINOR_VERSION` | No       | `75`                                                      | QBO API minor version                                         |
+| `DEBUG_QBO`         | No       | `false`                                                   | Log raw API payloads to stderr                                |
 
 ## Tool Reference
 
@@ -384,6 +429,7 @@ qbo_account(operation="search", query="Active = false")
 | Problem                                     | Solution                                                                                                                |
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `Missing required QuickBooks configuration` | Copy `.env.example` to `.env` and fill in credentials. Run auth flow if tokens are missing.                             |
+| `QBO_REDIRECT_URI is required`              | Set `QBO_REDIRECT_URI` to the production callback URL you registered in Intuit Developer.                               |
 | `Failed to connect to QuickBooks Online`    | Refresh token may be expired. Re-run: `uv run python -m quickbooks_mcp.auth`                                            |
 | `QBO connection expired`                    | Same fix — re-run the auth flow to get fresh tokens.                                                                    |
 | `Business Validation Error`                 | Check the `detail` field in the error response. Common cause: missing `customer_ref` on invoices or wrong field values. |

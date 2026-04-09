@@ -7,7 +7,7 @@ import dataclasses
 import pytest
 from fastmcp.exceptions import ToolError
 
-from quickbooks_mcp.config import QBOConfig
+from quickbooks_mcp.config import DEFAULT_OAUTH_PLAYGROUND_REDIRECT_URI, QBOConfig
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -35,6 +35,7 @@ def test_from_env_success(env_vars: dict[str, str]) -> None:
     assert config.refresh_token == "test_refresh_token"
     assert config.realm_id == "1234567890"
     assert config.environment == "sandbox"
+    assert config.redirect_uri == DEFAULT_OAUTH_PLAYGROUND_REDIRECT_URI
     assert config.minor_version == 75
     assert config.debug is False
 
@@ -100,10 +101,55 @@ def test_production_environment_accepted(
 ) -> None:
     """'production' is a valid QBO_ENVIRONMENT value."""
     monkeypatch.setenv("QBO_ENVIRONMENT", "production")
+    monkeypatch.setenv("QBO_REDIRECT_URI", "https://example.com/qbo/callback")
 
     config = QBOConfig.from_env()
 
     assert config.environment == "production"
+    assert config.redirect_uri == "https://example.com/qbo/callback"
+
+
+def test_production_requires_redirect_uri(
+    env_vars: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Production mode requires an explicit redirect URI."""
+    monkeypatch.setenv("QBO_ENVIRONMENT", "production")
+    monkeypatch.delenv("QBO_REDIRECT_URI", raising=False)
+
+    with pytest.raises(ToolError, match="QBO_REDIRECT_URI"):
+        QBOConfig.from_env()
+
+
+def test_sandbox_defaults_redirect_uri(
+    env_vars: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sandbox mode falls back to the Intuit OAuth Playground redirect URI."""
+    monkeypatch.delenv("QBO_REDIRECT_URI", raising=False)
+
+    config = QBOConfig.from_env()
+
+    assert config.redirect_uri == DEFAULT_OAUTH_PLAYGROUND_REDIRECT_URI
+
+
+def test_explicit_redirect_uri_is_honored(
+    env_vars: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """QBO_REDIRECT_URI overrides the sandbox default when provided."""
+    monkeypatch.setenv("QBO_REDIRECT_URI", "https://example.com/custom/callback")
+
+    config = QBOConfig.from_env()
+
+    assert config.redirect_uri == "https://example.com/custom/callback"
+
+
+def test_invalid_redirect_uri_raises(
+    env_vars: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Malformed QBO_REDIRECT_URI values should fail validation."""
+    monkeypatch.setenv("QBO_REDIRECT_URI", "not-a-url")
+
+    with pytest.raises(ToolError, match="QBO_REDIRECT_URI"):
+        QBOConfig.from_env()
 
 
 # ---------------------------------------------------------------------------

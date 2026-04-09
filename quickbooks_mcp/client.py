@@ -78,7 +78,7 @@ class QBOClient:
             auth_client = AuthClient(
                 client_id=cfg.client_id,
                 client_secret=cfg.client_secret,
-                redirect_uri="https://developer.intuit.com/v2/OAuth2Playground/RedirectUrl",
+                redirect_uri=cfg.redirect_uri,
                 environment=cfg.environment,
                 refresh_token=cfg.refresh_token,
             )

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>QuickBooks Authorization Callback</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">Callback</div>
+      <h1>QuickBooks authorization complete</h1>
+      <p>
+        Copy the full callback URL below and paste it back into the terminal
+        running <code class="inline">uv run python -m quickbooks_mcp.auth</code>.
+      </p>
+
+      <div class="panel">
+        <pre id="callback-url"></pre>
+        <button id="copy-button" type="button">Copy callback URL</button>
+      </div>
+
+      <p>
+        If the copied URL includes <code class="inline">code=</code> and
+        <code class="inline">realmId=</code>, the local auth helper has
+        what it needs to finish the QuickBooks setup.
+      </p>
+
+      <div class="footer">
+        YOUR ORGANIZATION - Internal QuickBooks integration
+      </div>
+    </main>
+
+    <script>
+      const callbackUrl = window.location.href;
+      const callbackNode = document.getElementById("callback-url");
+      const copyButton = document.getElementById("copy-button");
+
+      callbackNode.textContent = callbackUrl;
+
+      copyButton.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(callbackUrl);
+          copyButton.textContent = "Copied";
+          copyButton.disabled = true;
+        } catch (error) {
+          copyButton.textContent = "Copy failed";
+        }
+      });
+    </script>
+  </body>
+</html>

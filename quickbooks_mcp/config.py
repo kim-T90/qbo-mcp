@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from dotenv import find_dotenv, load_dotenv
 from fastmcp.exceptions import ToolError
@@ -19,11 +20,45 @@ _REQUIRED_VARS: tuple[str, ...] = (
 )
 
 _VALID_ENVIRONMENTS: frozenset[str] = frozenset({"sandbox", "production"})
+DEFAULT_OAUTH_PLAYGROUND_REDIRECT_URI = (
+    "https://developer.intuit.com/v2/OAuth2Playground/RedirectUrl"
+)
 
 
 def _parse_bool(value: str) -> bool:
     """Parse a truthy environment variable string to bool."""
     return value.strip().lower() in {"true", "1", "yes"}
+
+
+def _validate_redirect_uri(redirect_uri: str) -> str:
+    """Validate that a redirect URI is a well-formed absolute URL."""
+    parsed = urlparse(redirect_uri)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ToolError(
+            f"Invalid QBO_REDIRECT_URI value: {redirect_uri!r}. "
+            "Expected an absolute URL like 'https://example.com/callback'."
+        )
+    return redirect_uri
+
+
+def resolve_redirect_uri(environment: str, raw_redirect_uri: str | None) -> str:
+    """Resolve the redirect URI for the configured QBO environment.
+
+    Sandbox mode falls back to the Intuit OAuth Playground to preserve the
+    existing quickstart. Production mode requires an explicitly configured
+    redirect URI that matches the value registered in Intuit Developer.
+    """
+    redirect_uri = (raw_redirect_uri or "").strip()
+    if redirect_uri:
+        return _validate_redirect_uri(redirect_uri)
+
+    if environment == "sandbox":
+        return DEFAULT_OAUTH_PLAYGROUND_REDIRECT_URI
+
+    raise ToolError(
+        "QBO_REDIRECT_URI is required when QBO_ENVIRONMENT='production'. "
+        "Register a production redirect URI in Intuit Developer and add it to your .env file."
+    )
 
 
 @dataclass(frozen=True)
@@ -33,6 +68,7 @@ class QBOConfig:
     refresh_token: str
     realm_id: str
     environment: str
+    redirect_uri: str
     minor_version: int
     debug: bool
 
@@ -68,6 +104,7 @@ class QBOConfig:
                 f"Invalid QBO_ENVIRONMENT value: {environment!r}. "
                 "Must be 'sandbox' or 'production'."
             )
+        redirect_uri = resolve_redirect_uri(environment, os.environ.get("QBO_REDIRECT_URI"))
 
         raw_minor = os.environ.get("QBO_MINOR_VERSION", "75")
         try:
@@ -83,6 +120,7 @@ class QBOConfig:
             refresh_token=os.environ["QBO_REFRESH_TOKEN"],
             realm_id=os.environ["QBO_REALM_ID"],
             environment=environment,
+            redirect_uri=redirect_uri,
             minor_version=minor_version,
             debug=debug,
         )

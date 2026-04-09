@@ -3,9 +3,10 @@
 Usage:
     uv run python -m quickbooks_mcp.auth
 
-Uses the Intuit OAuth Playground redirect URI (already registered on your app)
-so no localhost redirect URI registration is needed. After authorizing in the
-browser, paste the full callback URL from your browser's address bar.
+Uses `QBO_REDIRECT_URI` when configured, which is required for production
+apps. Sandbox mode falls back to the Intuit OAuth Playground redirect URI
+for local testing. After authorizing in the browser, paste the full callback
+URL from your browser's address bar.
 """
 
 from __future__ import annotations
@@ -23,9 +24,7 @@ from intuitlib.enums import Scopes
 from quickbooks import QuickBooks
 from quickbooks.objects.company_info import CompanyInfo
 
-# The OAuth Playground redirect URI — pre-registered on all Intuit apps.
-_REDIRECT_URI = "https://developer.intuit.com/v2/OAuth2Playground/RedirectUrl"
-
+from quickbooks_mcp.config import resolve_redirect_uri
 
 # ---------------------------------------------------------------------------
 # .env helpers
@@ -91,9 +90,23 @@ def _upsert_env_vars(env_path: Path, updates: dict[str, str]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
-    """Run the OAuth authorization flow."""
-    # 1. Load existing .env to pick up CLIENT_ID / CLIENT_SECRET.
+def _extract_callback_params(callback_url: str) -> tuple[str, str]:
+    """Extract the auth code and realm ID from an OAuth callback URL."""
+    parsed = urlparse(callback_url)
+    params = parse_qs(parsed.query)
+    auth_code = params.get("code", [None])[0]
+    realm_id = params.get("realmId", [None])[0]
+
+    if not auth_code:
+        raise ValueError("No 'code' parameter found in callback URL.")
+    if not realm_id:
+        raise ValueError("No 'realmId' parameter found in callback URL.")
+
+    return auth_code, realm_id
+
+
+def _load_auth_settings() -> tuple[str, str, str, str]:
+    """Load the env needed for the one-time OAuth setup flow."""
     existing_env = find_dotenv(usecwd=True)
     if existing_env:
         load_dotenv(existing_env, override=False)
@@ -103,28 +116,38 @@ def main() -> None:
     environment = os.environ.get("QBO_ENVIRONMENT", "sandbox").strip().lower()
 
     if not client_id or not client_secret:
-        print(
-            "Error: QBO_CLIENT_ID and QBO_CLIENT_SECRET must be set in your .env file "
-            "or environment before running this command.",
-            file=sys.stderr,
+        raise ValueError(
+            "QBO_CLIENT_ID and QBO_CLIENT_SECRET must be set in your .env file "
+            "or environment before running this command."
         )
+
+    redirect_uri = resolve_redirect_uri(environment, os.environ.get("QBO_REDIRECT_URI"))
+    return client_id, client_secret, environment, redirect_uri
+
+
+def main() -> None:
+    """Run the OAuth authorization flow."""
+    try:
+        client_id, client_secret, environment, redirect_uri = _load_auth_settings()
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    # 2. Build the AuthClient with the OAuth Playground redirect URI.
+    # 1. Build the AuthClient with the configured redirect URI.
     auth_client = AuthClient(
         client_id=client_id,
         client_secret=client_secret,
-        redirect_uri=_REDIRECT_URI,
+        redirect_uri=redirect_uri,
         environment=environment,
     )
     auth_url = auth_client.get_authorization_url([Scopes.ACCOUNTING])
 
-    # 3. Open browser and ask user to paste the callback URL.
+    # 2. Open browser and ask user to paste the callback URL.
     print(f"Opening browser for QuickBooks authorization ({environment})...")
     print(f"If your browser doesn't open, visit:\n  {auth_url}\n")
     webbrowser.open(auth_url)
 
-    print("After authorizing, you'll be redirected to the Intuit OAuth Playground.")
+    print(f"After authorizing, you'll be redirected to:\n  {redirect_uri}")
     print("Copy the FULL URL from your browser's address bar and paste it here.\n")
 
     callback_url = input("Paste callback URL: ").strip()
@@ -133,23 +156,15 @@ def main() -> None:
         print("\n✗ No URL provided. Aborting.", file=sys.stderr)
         sys.exit(1)
 
-    # 4. Parse auth code and realm ID from the callback URL.
-    parsed = urlparse(callback_url)
-    params = parse_qs(parsed.query)
-    auth_code = params.get("code", [None])[0]
-    realm_id = params.get("realmId", [None])[0]
-
-    if not auth_code:
-        print("\n✗ No 'code' parameter found in the URL. Aborting.", file=sys.stderr)
+    # 3. Parse auth code and realm ID from the callback URL.
+    try:
+        auth_code, realm_id = _extract_callback_params(callback_url)
+    except ValueError as exc:
+        print(f"\n✗ {exc} Aborting.", file=sys.stderr)
         print("  Expected URL like: https://...?code=ABC123&realmId=12345", file=sys.stderr)
         sys.exit(1)
 
-    if not realm_id:
-        print("\n✗ No 'realmId' parameter found in the URL. Aborting.", file=sys.stderr)
-        print("  Expected URL like: https://...?code=ABC123&realmId=12345", file=sys.stderr)
-        sys.exit(1)
-
-    # 5. Exchange auth code for tokens.
+    # 4. Exchange auth code for tokens.
     try:
         auth_client.get_bearer_token(auth_code, realm_id=realm_id)
     except Exception as exc:
@@ -163,7 +178,7 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # 6. Write tokens to .env (atomic).
+    # 5. Write tokens to .env (atomic).
     env_path = _find_or_create_env_path()
     _upsert_env_vars(
         env_path,
@@ -173,7 +188,7 @@ def main() -> None:
         },
     )
 
-    # 7. Validate the connection by fetching CompanyInfo.
+    # 6. Validate the connection by fetching CompanyInfo.
     try:
         qb = QuickBooks(
             auth_client=auth_client,
@@ -192,12 +207,13 @@ def main() -> None:
         )
         sys.exit(1)
 
-    # 8. Success!
+    # 7. Success!
     print(
         f"\n✓ Connected to QuickBooks Online!\n"
         f"  Company: {company_name}\n"
         f"  Realm ID: {realm_id}\n"
         f"  Environment: {environment}\n"
+        f"  Redirect URI: {redirect_uri}\n"
         f"\nCredentials saved to {env_path}\n"
         f"Next: Start the server with `uv run python -m quickbooks_mcp`"
     )
