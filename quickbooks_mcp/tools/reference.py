@@ -141,15 +141,8 @@ async def _list_tax_codes(client: object, response_format: str) -> dict | str:
 
 async def _list_classes(client: object, response_format: str) -> dict | str:
     # python-quickbooks does not ship a Class object; use raw IDS query.
-    results = await client.execute(  # type: ignore[attr-defined]
-        client.qb_client.query,
-        "SELECT * FROM Class",  # type: ignore[attr-defined]
-    )
-    # qb_client.query returns a list of dicts already parsed from the API JSON.
-    items = [
-        qbo_to_snake(r) if isinstance(r, dict) else qbo_to_snake(r.to_dict())
-        for r in (results or [])
-    ]
+    rows = await client.query_rows("SELECT * FROM Class", "Class")  # type: ignore[attr-defined]
+    items = [qbo_to_snake(row) for row in rows]
     return format_response(items, "list_classes", "Class", response_format=response_format)
 
 

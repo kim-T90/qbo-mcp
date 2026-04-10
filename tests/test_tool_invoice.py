@@ -45,11 +45,29 @@ def _make_tx_obj(
     return obj
 
 
+def _make_invoice_row(
+    id_: str,
+    doc_number: str,
+    txn_date: str,
+    lines: list[dict],
+    customer_ref: dict | None = None,
+) -> dict:
+    return {
+        "Id": id_,
+        "DocNumber": doc_number,
+        "TxnDate": txn_date,
+        "CustomerRef": customer_ref or {"value": "10", "name": "Apex Logistics"},
+        "Line": lines,
+    }
+
+
 def _make_client(return_value=None) -> MagicMock:
     """Build a mock QBOClient whose execute() returns *return_value*."""
     client = MagicMock()
     client.qb_client = MagicMock()
     client.execute = AsyncMock(return_value=return_value)
+    client.query_rows = AsyncMock(return_value=return_value)
+    client.query_count = AsyncMock()
     return client
 
 
@@ -503,3 +521,219 @@ async def test_list_markdown_format_returns_string():
         response = await tx_list(client, TX_TYPE, ENTITY_TYPE, None, None, 20, 0, "markdown")
 
     assert isinstance(response, str)
+
+
+# ---------------------------------------------------------------------------
+# 20. search_line_items validation and behavior
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_search_line_items_requires_keywords_and_date_range():
+    tool_fn = _capture_tool_fn()
+    assert tool_fn is not None
+
+    ctx = MagicMock()
+    with patch("quickbooks_mcp.server.get_client", return_value=_make_client()):
+        with pytest.raises(ToolError, match="'start_date' is required"):
+            await tool_fn(
+                ctx=ctx,
+                operation="search_line_items",
+                keywords=["emb"],
+                end_date="2026-01-31",
+            )
+
+        with pytest.raises(ToolError, match="'keywords' is required"):
+            await tool_fn(
+                ctx=ctx,
+                operation="search_line_items",
+                start_date="2026-01-01",
+                end_date="2026-01-31",
+            )
+
+
+@pytest.mark.asyncio
+async def test_search_line_items_rejects_invalid_date_range():
+    tool_fn = _capture_tool_fn()
+    assert tool_fn is not None
+
+    ctx = MagicMock()
+    with patch("quickbooks_mcp.server.get_client", return_value=_make_client()):
+        with pytest.raises(ToolError, match="start_date.*less than or equal"):
+            await tool_fn(
+                ctx=ctx,
+                operation="search_line_items",
+                keywords=["emb"],
+                start_date="2026-02-01",
+                end_date="2026-01-01",
+            )
+
+
+@pytest.mark.asyncio
+async def test_search_line_items_matches_top_level_and_nested_descriptions_only_once():
+    tool_fn = _capture_tool_fn()
+    assert tool_fn is not None
+
+    invoice_rows = [
+        _make_invoice_row(
+            id_="1",
+            doc_number="INV-001",
+            txn_date="2026-01-05",
+            lines=[
+                {
+                    "Amount": 125.0,
+                    "Description": "Emb Front Left Chest",
+                    "DetailType": "SalesItemLineDetail",
+                    "SalesItemLineDetail": {
+                        "ItemRef": {"value": "5", "name": "Apparel Sales"}
+                    },
+                },
+                {
+                    "Amount": 60.0,
+                    "DetailType": "SalesItemLineDetail",
+                    "SalesItemLineDetail": {
+                        "Description": "EMB back logo",
+                        "ItemRef": {"value": "6", "name": "Screen Print"},
+                    },
+                },
+                {
+                    "Amount": 80.0,
+                    "DetailType": "SalesItemLineDetail",
+                    "SalesItemLineDetail": {
+                        "ItemRef": {"value": "7", "name": "Embroidery Service"},
+                    },
+                },
+            ],
+        )
+    ]
+    client = _make_client()
+    client.query_rows = AsyncMock(side_effect=[invoice_rows, []])
+    ctx = _make_ctx(client)
+
+    with patch("quickbooks_mcp.server.get_client", return_value=client):
+        result = await tool_fn(
+            ctx=ctx,
+            operation="search_line_items",
+            keywords=["emb", "front"],
+            start_date="2026-01-01",
+            end_date="2026-01-31",
+        )
+
+    assert result["status"] == "ok"
+    assert result["operation"] == "search_line_items"
+    assert result["count"] == 2
+    assert result["metadata"]["total_match_count"] == 2
+    assert result["metadata"]["matched_invoice_count"] == 1
+    assert result["data"][0]["description"] == "Emb Front Left Chest"
+    assert result["data"][0]["item_name"] == "Apparel Sales"
+    assert result["data"][1]["description"] == "EMB back logo"
+
+
+@pytest.mark.asyncio
+async def test_search_line_items_paginates_flattened_matches():
+    tool_fn = _capture_tool_fn()
+    assert tool_fn is not None
+
+    invoice_rows = [
+        _make_invoice_row(
+            id_="2",
+            doc_number="INV-002",
+            txn_date="2026-01-10",
+            lines=[
+                {
+                    "Amount": 10.0,
+                    "Description": "Emb A",
+                    "DetailType": "SalesItemLineDetail",
+                    "SalesItemLineDetail": {},
+                },
+                {
+                    "Amount": 20.0,
+                    "Description": "Emb B",
+                    "DetailType": "SalesItemLineDetail",
+                    "SalesItemLineDetail": {},
+                },
+                {
+                    "Amount": 30.0,
+                    "Description": "Emb C",
+                    "DetailType": "SalesItemLineDetail",
+                    "SalesItemLineDetail": {},
+                },
+            ],
+        )
+    ]
+    client = _make_client()
+    client.query_rows = AsyncMock(side_effect=[invoice_rows, []])
+    ctx = _make_ctx(client)
+
+    with patch("quickbooks_mcp.server.get_client", return_value=client):
+        result = await tool_fn(
+            ctx=ctx,
+            operation="search_line_items",
+            keywords=["emb"],
+            start_date="2026-01-01",
+            end_date="2026-01-31",
+            max_results=1,
+            offset=1,
+        )
+
+    assert result["count"] == 1
+    assert result["data"][0]["description"] == "Emb B"
+    assert result["metadata"]["total_match_count"] == 3
+    assert result["metadata"]["has_more"] is True
+    assert result["metadata"]["next_offset"] == 2
+    assert result["metadata"]["query_mode"] == "invoice_line_description_scan"
+
+
+@pytest.mark.asyncio
+async def test_search_line_items_reports_scan_limit_reached():
+    tool_fn = _capture_tool_fn()
+    assert tool_fn is not None
+
+    invoice_rows = [
+        _make_invoice_row(
+            id_="3",
+            doc_number="INV-003",
+            txn_date="2026-01-15",
+            lines=[
+                {
+                    "Amount": 50.0,
+                    "Description": "Emb cap",
+                    "DetailType": "SalesItemLineDetail",
+                    "SalesItemLineDetail": {},
+                }
+            ],
+        ),
+        _make_invoice_row(
+            id_="4",
+            doc_number="INV-004",
+            txn_date="2026-01-16",
+            lines=[
+                {
+                    "Amount": 75.0,
+                    "Description": "Emb jacket",
+                    "DetailType": "SalesItemLineDetail",
+                    "SalesItemLineDetail": {},
+                }
+            ],
+        ),
+    ]
+    client = _make_client()
+    client.query_rows = AsyncMock(return_value=invoice_rows)
+    ctx = _make_ctx(client)
+
+    with (
+        patch("quickbooks_mcp.server.get_client", return_value=client),
+        patch("quickbooks_mcp.tools.invoice.INVOICE_LINE_SEARCH_SCAN_LIMIT", 2),
+        patch("quickbooks_mcp.tools.invoice.INVOICE_LINE_SEARCH_PAGE_SIZE", 2),
+    ):
+        result = await tool_fn(
+            ctx=ctx,
+            operation="search_line_items",
+            keywords=["emb"],
+            start_date="2026-01-01",
+            end_date="2026-01-31",
+        )
+
+    assert result["metadata"]["scan_limit_reached"] is True
+    assert result["metadata"]["partial"] is True
+    assert result["metadata"]["scanned_invoice_count"] == 2

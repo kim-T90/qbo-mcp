@@ -46,6 +46,8 @@ def _make_client_mock(
     client.qb_client = MagicMock()
     client.qb_client.auth_client.access_token = "test_access_token"
     client.execute = AsyncMock(return_value=execute_return)
+    client.query_rows = AsyncMock(return_value=execute_return)
+    client.query_count = AsyncMock()
     return client
 
 
@@ -313,19 +315,14 @@ class TestList:
     async def test_list_builds_correct_query(self, tool_fn) -> None:
         client = MagicMock()
         client.qb_client = MagicMock()
-        client.qb_client.query = MagicMock(return_value=[])
-
-        async def execute_side_effect(fn, *args, **kwargs):
-            return fn()
-
-        client.execute = execute_side_effect
+        client.query_rows = AsyncMock(return_value=[])
         ctx = _make_ctx(client)
 
         with patch("quickbooks_mcp.server.get_client", return_value=client):
             await tool_fn(ctx=ctx, operation="list", entity_type="invoice", entity_id="147")
 
-        client.qb_client.query.assert_called_once()
-        sql = client.qb_client.query.call_args[0][0]
+        client.query_rows.assert_awaited_once()
+        sql = client.query_rows.call_args[0][0]
         assert "Invoice" in sql
         assert "147" in sql
 

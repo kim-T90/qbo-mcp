@@ -301,18 +301,7 @@ async def _count(
     count_query = f"SELECT COUNT(*) FROM {entity_type}"
     if query_str:
         count_query += f" WHERE {query_str}"
-
-    def _fetch():
-        return client.qb_client.query(count_query)
-
-    result = await client.execute(_fetch)
-
-    if isinstance(result, dict):
-        count = result.get("totalCount", 0)
-    elif isinstance(result, list):
-        count = len(result)
-    else:
-        count = 0
+    count = await client.query_count(count_query)
 
     return format_response(
         {"entity_type": entity_type, "count": count, "query": count_query},

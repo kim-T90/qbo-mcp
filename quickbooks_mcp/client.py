@@ -207,6 +207,16 @@ class QBOClient:
         # Should be unreachable, but satisfies type checkers.
         raise ToolError("QBO execute loop exited without result")  # pragma: no cover
 
+    async def query_rows(self, sql: str, entity_type: str) -> list[dict[str, Any]]:
+        """Execute an IDS query and normalize the result into raw row dicts."""
+        raw = await self.execute(self.qb_client.query, sql)
+        return self._normalize_query_rows(raw, entity_type, sql)
+
+    async def query_count(self, sql: str) -> int:
+        """Execute an IDS count query and normalize the result into an integer."""
+        raw = await self.execute(self.qb_client.query, sql)
+        return self._normalize_query_count(raw, sql)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -214,6 +224,69 @@ class QBOClient:
     async def _call(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Offload a synchronous python-quickbooks call to a thread pool."""
         return await asyncio.to_thread(fn, *args, **kwargs)
+
+    def _normalize_query_rows(
+        self,
+        raw: Any,
+        entity_type: str,
+        sql: str,
+    ) -> list[dict[str, Any]]:
+        """Normalize IDS query payloads into a list of row dicts."""
+        rows: Any = raw
+
+        if isinstance(raw, dict):
+            query_response = raw.get("QueryResponse")
+            if isinstance(query_response, dict):
+                rows = query_response.get(entity_type, [])
+            elif entity_type in raw:
+                rows = raw.get(entity_type, [])
+            elif raw == {}:
+                rows = []
+            else:
+                raise ToolError(
+                    f"Unexpected IDS query response shape for {entity_type}: {raw!r}. "
+                    f"SQL: {sql}"
+                )
+
+        if rows is None:
+            return []
+
+        if not isinstance(rows, list):
+            raise ToolError(
+                f"Expected a list of {entity_type} rows but received {type(rows).__name__}. "
+                f"SQL: {sql}"
+            )
+
+        normalized: list[dict[str, Any]] = []
+        for row in rows:
+            if isinstance(row, dict):
+                normalized.append(row)
+            elif hasattr(row, "to_dict"):
+                normalized.append(row.to_dict())
+            else:
+                raise ToolError(
+                    f"Unexpected row type {type(row).__name__} for {entity_type} query. "
+                    f"SQL: {sql}"
+                )
+
+        return normalized
+
+    def _normalize_query_count(self, raw: Any, sql: str) -> int:
+        """Normalize IDS COUNT query payloads into an integer count."""
+        if isinstance(raw, dict):
+            query_response = raw.get("QueryResponse")
+            if isinstance(query_response, dict) and "totalCount" in query_response:
+                return int(query_response["totalCount"])
+            if "totalCount" in raw:
+                return int(raw["totalCount"])
+            raise ToolError(f"Unexpected IDS count response shape: {raw!r}. SQL: {sql}")
+
+        if isinstance(raw, list):
+            return len(raw)
+
+        raise ToolError(
+            f"Expected IDS count response to be dict or list, got {type(raw).__name__}. SQL: {sql}"
+        )
 
     async def _refresh_token(self) -> None:
         """Refresh the QBO access token under a lock to prevent thundering herd.

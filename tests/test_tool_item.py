@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastmcp.exceptions import ToolError
@@ -51,6 +51,8 @@ def _make_client() -> MagicMock:
         return fn(*args, **kwargs)
 
     client.execute = _execute
+    client.query_rows = AsyncMock(return_value=[])
+    client.query_count = AsyncMock()
     return client
 
 
@@ -293,7 +295,7 @@ class TestSearchItems:
     async def test_search_passes_query_to_qb(self) -> None:
         item_obj = _make_item_obj(name="Fuel Surcharge")
         client = _make_client()
-        client.qb_client.query = MagicMock(return_value=[item_obj])
+        client.query_rows = AsyncMock(return_value=[item_obj.to_dict.return_value])
 
         result = await _search_items(
             client,
@@ -303,8 +305,8 @@ class TestSearchItems:
             response_format="json",
         )
 
-        client.qb_client.query.assert_called_once_with(
-            "SELECT * FROM Item WHERE Name LIKE '%Surcharge%'"
+        client.query_rows.assert_awaited_once_with(
+            "SELECT * FROM Item WHERE Name LIKE '%Surcharge%'", "Item"
         )
         assert result["status"] == "ok"
         assert result["operation"] == "search"
@@ -313,7 +315,7 @@ class TestSearchItems:
     @pytest.mark.asyncio
     async def test_search_metadata_includes_query(self) -> None:
         client = _make_client()
-        client.qb_client.query = MagicMock(return_value=[])
+        client.query_rows = AsyncMock(return_value=[])
 
         result = await _search_items(
             client,

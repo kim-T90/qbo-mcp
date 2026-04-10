@@ -130,7 +130,10 @@ IDS_QUERY_RULES = "call qbo_help(topic='query_syntax') for IDS query syntax rule
 _SE = "Common searches: "
 SEARCH_EXAMPLES: dict[str, str] = {
     "invoice": (
-        f"{_SE}Balance > '0' (unpaid), DueDate < '2026-01-01' (overdue), CustomerRef = '123'."
+        f"{_SE}Balance > '0' (unpaid), DueDate < '2026-01-01' (overdue), "
+        "CustomerRef = '123'. IDS search covers top-level invoice fields only. "
+        "Use qbo_invoice(operation='search_line_items', keywords=[...], start_date='YYYY-MM-DD', "
+        "end_date='YYYY-MM-DD') to scan invoice line descriptions."
     ),
     "bill": (f"{_SE}Balance > '0' (unpaid), DueDate < '2026-01-01' (overdue), VendorRef = '123'."),
     "payment": (f"{_SE}TotalAmt > '500', CustomerRef = '123', TxnDate >= '2026-01-01'."),
