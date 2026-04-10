@@ -118,6 +118,69 @@ class TestExecuteSuccess:
 
 
 # ---------------------------------------------------------------------------
+# query_rows / query_count normalization
+# ---------------------------------------------------------------------------
+
+
+class TestQueryNormalization:
+    @pytest.mark.asyncio
+    async def test_query_rows_accepts_live_query_response(
+        self, qbo_config: QBOConfig, mock_qb_client: MagicMock
+    ) -> None:
+        client = _make_client(qbo_config)
+        _attach_mock_qb(client, mock_qb_client)
+        mock_qb_client.query.return_value = {
+            "QueryResponse": {
+                "Invoice": [
+                    {"Id": "1", "DocNumber": "INV-001"},
+                    {"Id": "2", "DocNumber": "INV-002"},
+                ]
+            }
+        }
+
+        rows = await client.query_rows("SELECT * FROM Invoice", "Invoice")
+
+        assert len(rows) == 2
+        assert rows[0]["Id"] == "1"
+
+    @pytest.mark.asyncio
+    async def test_query_rows_accepts_legacy_bare_list(
+        self, qbo_config: QBOConfig, mock_qb_client: MagicMock
+    ) -> None:
+        client = _make_client(qbo_config)
+        _attach_mock_qb(client, mock_qb_client)
+        mock_qb_client.query.return_value = [{"Id": "1"}]
+
+        rows = await client.query_rows("SELECT * FROM Customer", "Customer")
+
+        assert rows == [{"Id": "1"}]
+
+    @pytest.mark.asyncio
+    async def test_query_count_accepts_live_query_response(
+        self, qbo_config: QBOConfig, mock_qb_client: MagicMock
+    ) -> None:
+        client = _make_client(qbo_config)
+        _attach_mock_qb(client, mock_qb_client)
+        mock_qb_client.query.return_value = {"QueryResponse": {"totalCount": 42}}
+
+        count = await client.query_count("SELECT COUNT(*) FROM Invoice")
+
+        assert count == 42
+
+    @pytest.mark.asyncio
+    async def test_query_count_accepts_legacy_bare_dict(
+        self, qbo_config: QBOConfig, mock_qb_client: MagicMock
+    ) -> None:
+        client = _make_client(qbo_config)
+        _attach_mock_qb(client, mock_qb_client)
+        mock_qb_client.query.return_value = {"totalCount": 7}
+
+        count = await client.query_count("SELECT COUNT(*) FROM Invoice")
+
+        assert count == 7
+
+
+# ---------------------------------------------------------------------------
 # execute — 401 / AuthorizationException retry
 # ---------------------------------------------------------------------------
 

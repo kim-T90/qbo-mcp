@@ -359,12 +359,8 @@ async def tx_search(
 ) -> dict | str:
     """Run a raw IDS query against a transaction table."""
     full_query = f"SELECT * FROM {entity_type} WHERE {query}"
-
-    results = await client.execute(client.qb_client.query, full_query)
-    items = [
-        qbo_to_snake(r) if isinstance(r, dict) else qbo_to_snake(r.to_dict())
-        for r in (results or [])
-    ]
+    rows = await client.query_rows(full_query, entity_type)
+    items = [qbo_to_snake(row) for row in rows]
     response = format_response(
         items,
         "search",

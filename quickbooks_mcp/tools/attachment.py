@@ -194,23 +194,20 @@ def register(mcp: FastMCP) -> None:
 
             qbo_entity_type = _ENTITY_TYPE_MAP[entity_type_lower]
 
-            def _list() -> list:
-                sql = (
-                    f"SELECT * FROM Attachable WHERE "
-                    f"AttachableRef.EntityRef.Type = '{qbo_entity_type}' AND "
-                    f"AttachableRef.EntityRef.value = '{entity_id}'"
-                )
-                return qb.query(sql)
-
-            results = await client.execute(_list)
-
-            if results and isinstance(results[0], dict):
-                converted_list = [qbo_to_snake(r) for r in results]
-            else:
-                converted_list = [qbo_to_snake(r.to_dict()) for r in results]
+            sql = (
+                f"SELECT * FROM Attachable WHERE "
+                f"AttachableRef.EntityRef.Type = '{qbo_entity_type}' AND "
+                f"AttachableRef.EntityRef.value = '{entity_id}'"
+            )
+            rows = await client.query_rows(sql, _ENTITY_TYPE)
+            converted_list = [qbo_to_snake(row) for row in rows]
 
             return format_response(
-                converted_list, operation, _ENTITY_TYPE, response_format=response_format
+                converted_list,
+                operation,
+                _ENTITY_TYPE,
+                metadata={"query": sql},
+                response_format=response_format,
             )
 
         # ------------------------------------------------------------------

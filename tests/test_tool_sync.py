@@ -26,6 +26,8 @@ def _make_client_mock(execute_return=None) -> MagicMock:
     client = MagicMock()
     client.qb_client = MagicMock()
     client.execute = AsyncMock(return_value=execute_return)
+    client.query_rows = AsyncMock(return_value=execute_return)
+    client.query_count = AsyncMock(return_value=execute_return)
     return client
 
 
@@ -324,17 +326,12 @@ class TestCount:
     async def test_count_builds_correct_query(self, tool_fn) -> None:
         client = _make_client_mock()
         ctx = _make_ctx(client)
-        client.qb_client.query = MagicMock(return_value={"totalCount": 42})
-
-        async def execute_side_effect(fn, *args, **kwargs):
-            return fn()
-
-        client.execute = execute_side_effect
+        client.query_count = AsyncMock(return_value=42)
 
         with patch("quickbooks_mcp.server.get_client", return_value=client):
             result = await tool_fn(ctx=ctx, operation="count", entity_type="Invoice")
 
-        client.qb_client.query.assert_called_once_with("SELECT COUNT(*) FROM Invoice")
+        client.query_count.assert_awaited_once_with("SELECT COUNT(*) FROM Invoice")
         assert result["status"] == "ok"
         assert result["data"][0]["count"] == 42
         assert result["data"][0]["entity_type"] == "Invoice"
@@ -347,12 +344,7 @@ class TestCount:
     async def test_count_with_where_clause(self, tool_fn) -> None:
         client = _make_client_mock()
         ctx = _make_ctx(client)
-        client.qb_client.query = MagicMock(return_value={"totalCount": 7})
-
-        async def execute_side_effect(fn, *args, **kwargs):
-            return fn()
-
-        client.execute = execute_side_effect
+        client.query_count = AsyncMock(return_value=7)
 
         with patch("quickbooks_mcp.server.get_client", return_value=client):
             result = await tool_fn(
@@ -363,7 +355,7 @@ class TestCount:
             )
 
         expected_sql = "SELECT COUNT(*) FROM Invoice WHERE TotalAmt > '100.00'"
-        client.qb_client.query.assert_called_once_with(expected_sql)
+        client.query_count.assert_awaited_once_with(expected_sql)
         assert result["data"][0]["count"] == 7
         assert result["data"][0]["query"] == expected_sql
 
@@ -372,13 +364,7 @@ class TestCount:
         """count falls back to len(result) when SDK returns a list."""
         client = _make_client_mock()
         ctx = _make_ctx(client)
-        # Some SDK versions return a list of matching objects instead of totalCount dict
-        client.qb_client.query = MagicMock(return_value=[{"Id": "1"}, {"Id": "2"}, {"Id": "3"}])
-
-        async def execute_side_effect(fn, *args, **kwargs):
-            return fn()
-
-        client.execute = execute_side_effect
+        client.query_count = AsyncMock(return_value=3)
 
         with patch("quickbooks_mcp.server.get_client", return_value=client):
             result = await tool_fn(ctx=ctx, operation="count", entity_type="Customer")
@@ -407,6 +393,7 @@ class TestCount:
     @pytest.mark.asyncio
     async def test_count_markdown_returns_string(self, tool_fn) -> None:
         client = _make_client_mock(execute_return={"totalCount": 5})
+        client.query_count = AsyncMock(return_value=5)
         ctx = _make_ctx(client)
 
         with patch("quickbooks_mcp.server.get_client", return_value=client):

@@ -39,6 +39,8 @@ def _make_client_mock(execute_return=None) -> MagicMock:
     client = MagicMock()
     client.qb_client = MagicMock()
     client.execute = AsyncMock(return_value=execute_return)
+    client.query_rows = AsyncMock(return_value=execute_return)
+    client.query_count = AsyncMock()
     return client
 
 
@@ -272,12 +274,7 @@ class TestSearch:
         """Verify the IDS SELECT is constructed from the WHERE clause."""
         client = MagicMock()
         client.qb_client = MagicMock()
-        client.qb_client.query = MagicMock(return_value=[])
-
-        async def execute_side_effect(fn, *args, **kwargs):
-            return fn()
-
-        client.execute = execute_side_effect
+        client.query_rows = AsyncMock(return_value=[])
         ctx = _make_ctx(client)
 
         with patch("quickbooks_mcp.server.get_client", return_value=client):
@@ -287,8 +284,8 @@ class TestSearch:
                 query="Name LIKE '%Truck%'",
             )
 
-        client.qb_client.query.assert_called_once_with(
-            "SELECT * FROM Account WHERE Name LIKE '%Truck%'"
+        client.query_rows.assert_awaited_once_with(
+            "SELECT * FROM Account WHERE Name LIKE '%Truck%'", "Account"
         )
 
 

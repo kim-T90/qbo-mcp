@@ -78,9 +78,9 @@ async def validate_account(client) -> None:
 
     # search (IDS query)
     try:
-        results_q = await client.execute(
-            client.qb_client.query,
+        results_q = await client.query_rows(
             "SELECT * FROM Account WHERE AccountType = 'Bank' MAXRESULTS 5",
+            "Account",
         )
         count = len(results_q or [])
         record("qbo_account", "search", "pass", f"{count} bank accounts")
@@ -118,10 +118,7 @@ async def validate_transaction(client) -> None:
 
     # list invoices
     try:
-        invoices = await client.execute(
-            client.qb_client.query,
-            "SELECT * FROM Invoice MAXRESULTS 5",
-        )
+        invoices = await client.query_rows("SELECT * FROM Invoice MAXRESULTS 5", "Invoice")
         count = len(invoices or [])
         record("qbo_transaction", "list_invoices", "pass", f"{count} invoices (max 5)")
     except Exception as e:
@@ -129,10 +126,7 @@ async def validate_transaction(client) -> None:
 
     # list bills
     try:
-        bills = await client.execute(
-            client.qb_client.query,
-            "SELECT * FROM Bill MAXRESULTS 5",
-        )
+        bills = await client.query_rows("SELECT * FROM Bill MAXRESULTS 5", "Bill")
         count = len(bills or [])
         record("qbo_transaction", "list_bills", "pass", f"{count} bills (max 5)")
     except Exception as e:
@@ -141,9 +135,9 @@ async def validate_transaction(client) -> None:
     # search payments (last 90 days)
     try:
         since = (date.today() - timedelta(days=90)).isoformat()
-        payments = await client.execute(
-            client.qb_client.query,
+        payments = await client.query_rows(
             f"SELECT * FROM Payment WHERE MetaData.LastUpdatedTime >= '{since}' MAXRESULTS 5",
+            "Payment",
         )
         count = len(payments or [])
         record("qbo_transaction", "search_payments", "pass", f"{count} payments last 90d (max 5)")
@@ -222,10 +216,7 @@ async def validate_sync(client) -> None:
 
     # Entity count
     try:
-        count_result = await client.execute(
-            client.qb_client.query,
-            "SELECT COUNT(*) FROM Invoice",
-        )
+        count_result = await client.query_count("SELECT COUNT(*) FROM Invoice")
         record("qbo_bulk", "count_invoices", "pass", f"Result: {count_result}")
     except Exception as e:
         record("qbo_bulk", "count_invoices", "fail", str(e))
@@ -249,14 +240,43 @@ async def validate_attachment(client) -> None:
     print("\n--- qbo_attachment ---")
 
     try:
-        attachables = await client.execute(
-            client.qb_client.query,
+        attachables = await client.query_rows(
             "SELECT * FROM Attachable MAXRESULTS 5",
+            "Attachable",
         )
         count = len(attachables or [])
         record("qbo_attachment", "list", "pass", f"{count} attachments (max 5)")
     except Exception as e:
         record("qbo_attachment", "list", "fail", str(e))
+
+
+async def validate_invoice_line_search(client) -> None:
+    """qbo_invoice.search_line_items smoke test."""
+    from quickbooks_mcp.tools.invoice import _search_line_items
+
+    print("\n--- qbo_invoice.search_line_items ---")
+
+    try:
+        end = date.today()
+        start = end - timedelta(days=30)
+        result = await _search_line_items(
+            client,
+            keywords=["emb", "embroidery"],
+            start_date=start.isoformat(),
+            end_date=end.isoformat(),
+            max_results=5,
+            offset=0,
+            response_format="json",
+        )
+        count = result.get("count", 0) if isinstance(result, dict) else 0
+        meta = result.get("metadata", {}) if isinstance(result, dict) else {}
+        detail = (
+            f"{count} matches, scanned={meta.get('scanned_invoice_count')}, "
+            f"limit_reached={meta.get('scan_limit_reached')}"
+        )
+        record("qbo_invoice", "search_line_items", "pass", detail)
+    except Exception as e:
+        record("qbo_invoice", "search_line_items", "fail", str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +309,7 @@ async def main() -> int:
         validate_account,
         validate_party,
         validate_transaction,
+        validate_invoice_line_search,
         validate_item,
         validate_report,
         validate_sync,

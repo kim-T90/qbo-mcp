@@ -231,21 +231,16 @@ def register(mcp: FastMCP) -> None:
                     "query is required for operation='search'. "
                     "Provide an IDS WHERE clause, e.g. \"Name LIKE '%Checking%'\"."
                 )
-
-            def _search() -> list:
-                sql = f"SELECT * FROM Account WHERE {query}"
-                return qb.query(sql)
-
-            results = await client.execute(_search)
-
-            # qb.query returns a list of dicts (raw QBO JSON), not model objects
-            if results and isinstance(results[0], dict):
-                converted = [qbo_to_snake(r) for r in results]
-            else:
-                converted = [qbo_to_snake(r.to_dict()) for r in results]
+            sql = f"SELECT * FROM Account WHERE {query}"
+            rows = await client.query_rows(sql, _ENTITY_TYPE)
+            converted = [qbo_to_snake(row) for row in rows]
 
             response = format_response(
-                converted, operation, _ENTITY_TYPE, response_format=response_format
+                converted,
+                operation,
+                _ENTITY_TYPE,
+                metadata={"query": sql},
+                response_format=response_format,
             )
             if response_format == "json":
                 response = truncate_response(response)

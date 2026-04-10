@@ -47,6 +47,8 @@ def _make_client(return_value=None) -> MagicMock:
     client = MagicMock()
     client.qb_client = MagicMock()
     client.execute = AsyncMock(return_value=return_value)
+    client.query_rows = AsyncMock(return_value=return_value)
+    client.query_count = AsyncMock()
     return client
 
 

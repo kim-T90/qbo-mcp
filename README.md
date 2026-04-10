@@ -400,6 +400,7 @@ The `search` operation on all tools uses QBO's IDS query language (not SQL):
 - String values use **single quotes**
 - Max 1000 results per query
 - Order by `MetaData.LastUpdatedTime` (not `Id`)
+- IDS search only covers top-level entity fields. For invoices, IDS does **not** search nested line descriptions.
 
 **Common field names** (QBO uses PascalCase, not snake_case):
 
@@ -422,7 +423,18 @@ qbo_transaction(operation="search", tx_type="invoice", query="TotalAmt > '1000.0
 
 # Find inactive accounts
 qbo_account(operation="search", query="Active = false")
+
+# Find invoice line descriptions containing embroidery keywords
+qbo_invoice(
+    operation="search_line_items",
+    keywords=["emb", "embroidery"],
+    start_date="2026-01-01",
+    end_date="2026-01-31",
+    max_results=20
+)
 ```
+
+`qbo_invoice(operation="search_line_items")` is the supported way to search invoice line descriptions. It requires `keywords`, `start_date`, and `end_date`, scans only the bounded date range, returns compact flattened match rows, and sets metadata flags when the internal scan limit is reached.
 
 ## Troubleshooting
 

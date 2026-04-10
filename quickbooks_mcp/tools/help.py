@@ -163,6 +163,14 @@ _IDS_SYNTAX_GUIDE = (
     "  Id IN ('1', '2', '3')"
 )
 
+_INVOICE_LINE_SEARCH_NOTE = (
+    "Invoice IDS search only supports top-level invoice fields such as DocNumber, "
+    "TxnDate, TotalAmt, Balance, CustomerRef, and PrivateNote. It does not search "
+    "nested line descriptions. Use qbo_invoice(operation='search_line_items', "
+    "keywords=[...], start_date='YYYY-MM-DD', end_date='YYYY-MM-DD') for "
+    "description-based line-item scans."
+)
+
 
 # ---------------------------------------------------------------------------
 # Line item schema reference per detail type
@@ -339,6 +347,7 @@ _REQUIRED_PARAMS: dict[str, dict[str, list[str]]] = {
         "send": ["id", "email"],
         "pdf": ["id"],
         "search": ["query"],
+        "search_line_items": ["keywords", "start_date", "end_date"],
     },
     "bill": {
         "list": [],
@@ -573,11 +582,14 @@ def register(mcp: FastMCP) -> None:
                 ],
                 "quick_start": {
                     "search": (
-                        "Use qbo_{entity}(operation='search', "
-                        "query=\"Balance > '0'\"). "
-                        "Example: qbo_invoice(operation='search', "
-                        "query=\"Balance > '0'\") finds unpaid invoices."
-                    ),
+                    "Use qbo_{entity}(operation='search', "
+                    "query=\"Balance > '0'\"). "
+                    "Example: qbo_invoice(operation='search', "
+                    "query=\"Balance > '0'\") finds unpaid invoices. "
+                    "Use qbo_invoice(operation='search_line_items', keywords=['emb'], "
+                    "start_date='2026-01-01', end_date='2026-01-31') to search "
+                    "invoice line descriptions."
+                ),
                     "create": (
                         "Use qbo_{entity}(operation='create', ..., "
                         "preview=False). preview defaults to True "
@@ -606,7 +618,10 @@ def register(mcp: FastMCP) -> None:
                 return {
                     "entity": key,
                     "fields": _FIELD_NAMES[key],
-                    "note": "Use these PascalCase field names in IDS search queries.",
+                    "note": (
+                        "Use these PascalCase field names in IDS search queries. "
+                        + (_INVOICE_LINE_SEARCH_NOTE if key == "Invoice" else "")
+                    ),
                 }
             # No entity specified — list all
             return {
@@ -623,9 +638,13 @@ def register(mcp: FastMCP) -> None:
                 matrix[tx_type] = sorted(ops)
             return {
                 "transaction_operation_matrix": matrix,
+                "invoice_tool_only_operations": {
+                    "qbo_invoice": ["search_line_items"],
+                },
                 "note": (
                     "All tx_types support list, get, create, update, delete, search. "
-                    "void, send, pdf are only available for specific types as shown."
+                    "void, send, pdf are only available for specific types as shown. "
+                    "qbo_invoice also supports search_line_items for line description scans."
                 ),
             }
 
@@ -639,7 +658,8 @@ def register(mcp: FastMCP) -> None:
                     "items": "Name, Type, UnitPrice, Active",
                 },
                 "note": (
-                    "Use qbo_help(topic='fields', entity='...') for the full field list per entity."
+                    "Use qbo_help(topic='fields', entity='...') for the full field list per entity. "
+                    + _INVOICE_LINE_SEARCH_NOTE
                 ),
             }
 
@@ -706,7 +726,14 @@ def register(mcp: FastMCP) -> None:
                     "entity": key,
                     "tool": tool_name,
                     "required_params": _REQUIRED_PARAMS[key],
-                    "note": note,
+                    "note": (
+                        note
+                        + (
+                            " search_line_items requires keywords, start_date, and end_date."
+                            if key == "invoice"
+                            else ""
+                        )
+                    ),
                 }
             # No entity — return all
             grouped: dict[str, dict] = {}

@@ -302,12 +302,8 @@ async def _search(
     response_format: str,
 ) -> dict | str:
     full_query = f"SELECT * FROM {ENTITY_TYPE} WHERE {query}"
-
-    results = await client.execute(client.qb_client.query, full_query)
-    items = [
-        qbo_to_snake(r) if isinstance(r, dict) else qbo_to_snake(r.to_dict())
-        for r in (results or [])
-    ]
+    rows = await client.query_rows(full_query, ENTITY_TYPE)
+    items = [qbo_to_snake(row) for row in rows]
     response = format_response(
         items,
         "search",

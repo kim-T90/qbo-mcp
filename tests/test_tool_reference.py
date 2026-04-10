@@ -37,6 +37,8 @@ def _make_mock_client(execute_return: Any) -> MagicMock:
     client = MagicMock()
     client.execute = AsyncMock(return_value=execute_return)
     client.qb_client = MagicMock()
+    client.query_rows = AsyncMock(return_value=execute_return)
+    client.query_count = AsyncMock()
     return client
 
 
@@ -261,7 +263,7 @@ class TestListClasses:
 
         await _list_classes(client, "json")
 
-        client.execute.assert_awaited_once_with(client.qb_client.query, "SELECT * FROM Class")
+        client.query_rows.assert_awaited_once_with("SELECT * FROM Class", "Class")
 
 
 # ---------------------------------------------------------------------------

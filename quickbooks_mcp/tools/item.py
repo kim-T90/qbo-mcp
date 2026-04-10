@@ -291,11 +291,8 @@ async def _search_items(
     response_format: str,
 ) -> dict | str:
     iql = f"SELECT * FROM Item WHERE {query}"
-    results = await client.execute(client.qb_client.query, iql)  # type: ignore[attr-defined]
-    items = [
-        qbo_to_snake(r) if isinstance(r, dict) else qbo_to_snake(r.to_dict())
-        for r in (results or [])
-    ]
+    rows = await client.query_rows(iql, _ENTITY_TYPE)  # type: ignore[attr-defined]
+    items = [qbo_to_snake(row) for row in rows]
     total = len(items)
     page, meta = paginate_list(items, total, offset=offset, limit=max_results)
     meta["query"] = iql
